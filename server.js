@@ -26,6 +26,7 @@ app.post('/webhook', async (req, res) => {
       chat_id: msg.chat.id,
       text: reply
     });
+
     res.send('ok');
   } catch (e) {
     console.error(e.response?.data || e.message);
@@ -33,4 +34,6 @@ app.post('/webhook', async (req, res) => {
   }
 });
 
-app.listen(process.env.PORT || 3000, () => console.log('🔥 Servidor arrancado'));
+// ESTA LÍNEA ERA CRÍTICA — PARA EXPONER EN RAILWAY
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`🔥 Servidor funcionando en puerto ${PORT}`));
