@@ -4,58 +4,59 @@ const bodyParser = require('body-parser');
 require('dotenv').config();
 
 const app = express();
-app.use(bodyParser.json());
+const PORT = process.env.PORT || 8080;
 
-const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const RETELL_API_KEY = process.env.RETELL_API_KEY;
 const RETELL_AGENT_ID = process.env.RETELL_AGENT_ID;
 
-const TELEGRAM_API = `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`;
+app.use(bodyParser.json());
 
 app.post('/webhook', async (req, res) => {
   try {
-    const message = req.body.message?.text;
-    const chatId = req.body.message?.chat.id;
+    const message = req.body.message;
+    if (!message || !message.text) return res.sendStatus(200);
 
-    if (!message || !chatId) {
-      console.warn('Mensaje o chatId inválido');
-      return res.sendStatus(400);
-    }
+    const userMessage = message.text;
+    const chatId = message.chat.id;
 
-    console.log('📩 Webhook recibido:', req.body);
+    console.log('📩 Webhook recibido:', JSON.stringify(req.body, null, 2));
 
     const retellResponse = await axios.post(
-      'https://api.retellai.com/chat-completion',
+      'https://api.retellai.com/v1/chat-completion',
       {
         agent_id: RETELL_AGENT_ID,
-        messages: [{ role: 'user', content: message }],
+        messages: [
+          {
+            role: 'user',
+            content: userMessage
+          }
+        ]
       },
       {
         headers: {
           Authorization: `Bearer ${RETELL_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
+          'Content-Type': 'application/json'
+        }
       }
     );
 
-    const reply = retellResponse.data?.choices?.[0]?.message?.content || '[Sin respuesta]';
+    const responseText = retellResponse.data.choices[0].message.content;
 
-    console.log('✅ Respuesta Retell:', reply);
-
-    await axios.post(TELEGRAM_API, {
+    await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
       chat_id: chatId,
-      text: reply,
+      text: responseText
     });
 
     res.sendStatus(200);
-  } catch (err) {
-    console.error('🔥 ERROR:', err?.response?.data || err.message);
+  } catch (error) {
+    console.error('🔥 ERROR:', error.response?.data || error.message);
     res.sendStatus(500);
   }
 });
 
-const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => {
   console.log(`🔥 Servidor funcionando en puerto ${PORT}`);
 });
+
 
