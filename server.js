@@ -5,7 +5,8 @@ require('dotenv').config();
 const app = express();
 app.use(express.json());
 
-const userChatMap = {}; // userIdTelegram : chatIdRetell
+// Mapeo usuario Telegram → chat_id de Retell
+const userChatMap = {};
 
 app.post('/webhook', async (req, res) => {
   try {
@@ -16,10 +17,10 @@ app.post('/webhook', async (req, res) => {
     const telegramChatId = message.chat.id;
     const userMsg = message.text;
 
-    // 1️⃣ Crear sesión de chat en Retell si no existe
+    // 1️⃣ Crear sesión de chat en Retell si no existe para este usuario
     if (!userChatMap[telegramUserId]) {
       const chatRes = await axios.post(
-        'https://api.retellai.com/v1/create-chat',
+        'https://api.retellai.com/v1/create-chat',      // URL ABSOLUTA, NUNCA LOCAL
         {
           agent_id: process.env.RETELL_AGENT_ID,
           metadata: { telegram_user_id: telegramUserId }
@@ -34,9 +35,9 @@ app.post('/webhook', async (req, res) => {
       userChatMap[telegramUserId] = chatRes.data.chat_id;
     }
 
-    // 2️⃣ Mandar mensaje y obtener respuesta
+    // 2️⃣ Mandar mensaje y obtener respuesta del agente Retell
     const completionRes = await axios.post(
-      'https://api.retellai.com/v1/create-chat-completion',
+      'https://api.retellai.com/v1/create-chat-completion',   // URL ABSOLUTA
       {
         chat_id: userChatMap[telegramUserId],
         message: userMsg
@@ -50,7 +51,7 @@ app.post('/webhook', async (req, res) => {
     );
 
     // 3️⃣ Responder en Telegram
-    const agentResponse = completionRes.data.messages[0].content;
+    const agentResponse = completionRes.data.messages[0].content || 'Sin respuesta del agente.';
     await axios.post(
       `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`,
       {
@@ -61,13 +62,13 @@ app.post('/webhook', async (req, res) => {
 
     return res.sendStatus(200);
   } catch (err) {
-    // Log avanzado para debugging real
+    // Log detallado para troubleshooting
     if (err.response) {
       console.error('ERROR:', err.response.status, err.response.data);
     } else {
       console.error('ERROR:', err.message);
     }
-    // Mensaje claro para usuario
+    // Mensaje al usuario
     const telegramChatId = req.body?.message?.chat?.id;
     if (telegramChatId) {
       await axios.post(
@@ -83,7 +84,7 @@ app.post('/webhook', async (req, res) => {
   }
 });
 
-// Endpoint health check
+// Health check endpoint para Railway
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
 
 app.listen(process.env.PORT || 3000, () =>
