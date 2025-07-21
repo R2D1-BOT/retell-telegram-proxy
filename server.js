@@ -45,19 +45,20 @@ async function sendTelegramMessage(chatId, message) {
     }
 }
 
-// Función para crear una conversación con Retell AI
-async function createRetellChat(message, userId) {
+// Función para enviar mensaje a agente de chat/texto
+async function sendMessageToRetellChat(message, userId) {
     try {
-        console.log('🔄 Creando chat con Retell AI...');
+        console.log('💬 Enviando mensaje a agente de chat...');
         console.log('📝 Mensaje del usuario:', message);
         console.log('👤 User ID:', userId);
         
-        const response = await axios.post(`${RETELL_API_BASE_URL}/v2/create-web-call`, {
+        const response = await axios.post(`${RETELL_API_BASE_URL}/v2/chat/completion`, {
             agent_id: RETELL_AGENT_ID,
-            metadata: {
-                user_id: userId.toString(),
-                source: 'telegram'
-            }
+            messages: [{
+                role: 'user',
+                content: message
+            }],
+            user_id: userId.toString()
         }, {
             headers: {
                 'Authorization': `Bearer ${RETELL_API_KEY}`,
@@ -65,10 +66,10 @@ async function createRetellChat(message, userId) {
             }
         });
         
-        console.log('✅ Chat creado con Retell:', response.data);
+        console.log('✅ Respuesta de Retell:', response.data);
         return response.data;
     } catch (error) {
-        console.error('❌ Error creando chat con Retell:');
+        console.error('❌ Error enviando mensaje a Retell:');
         console.error('Status:', error.response?.status);
         console.error('Headers:', error.response?.headers);
         console.error('Data:', error.response?.data);
@@ -153,46 +154,33 @@ app.post('/webhook', async (req, res) => {
         });
         
         try {
-            // Intentar primero con el endpoint de web call
-            console.log('🔄 Intentando crear web call...');
-            const retellResponse = await createRetellChat(userMessage, userId);
+            // Enviar mensaje directamente al agente de chat
+            console.log('🔄 Enviando a agente de chat...');
+            const retellResponse = await sendMessageToRetellChat(userMessage, userId);
             
-            if (retellResponse.access_token || retellResponse.call_id) {
-                await sendTelegramMessage(chatId, 
-                    `🤖 <b>Conexión establecida con Retell AI</b>\n\n` +
-                    `📞 Call ID: <code>${retellResponse.call_id || 'N/A'}</code>\n` +
-                    `🔑 Token: <code>${retellResponse.access_token ? 'Generado' : 'N/A'}</code>\n\n` +
-                    `<i>Tu mensaje ha sido procesado correctamente.</i>`
-                );
-            } else {
-                throw new Error('Respuesta inesperada de Retell');
+            // Extraer la respuesta del agente
+            let botResponse = 'Mensaje procesado correctamente.';
+            
+            if (retellResponse.choices && retellResponse.choices[0] && retellResponse.choices[0].message) {
+                botResponse = retellResponse.choices[0].message.content;
+            } else if (retellResponse.response) {
+                botResponse = retellResponse.response;
+            } else if (retellResponse.content) {
+                botResponse = retellResponse.content;
             }
+            
+            await sendTelegramMessage(chatId, `🤖 ${botResponse}`);
             
         } catch (retellError) {
-            console.log('⚠️ Web call falló, intentando con chat directo...');
+            console.error('❌ Error con Retell AI:', retellError.response?.data || retellError.message);
             
-            try {
-                const chatResponse = await sendMessageToRetell(userMessage, userId);
-                
-                if (chatResponse.response || chatResponse.message) {
-                    await sendTelegramMessage(chatId, 
-                        chatResponse.response || chatResponse.message || '✅ Mensaje procesado por Retell AI'
-                    );
-                } else {
-                    throw new Error('Sin respuesta válida del chat');
-                }
-                
-            } catch (chatError) {
-                console.error('❌ Ambos métodos fallaron');
-                
-                // Mensaje de error amigable al usuario
-                await sendTelegramMessage(chatId, 
-                    `⚠️ <b>Servicio temporalmente no disponible</b>\n\n` +
-                    `Lo siento, hay un problema de conectividad con el sistema de IA. ` +
-                    `Por favor, inténtalo de nuevo en unos momentos.\n\n` +
-                    `<i>Tu mensaje: "${userMessage}"</i>`
-                );
-            }
+            // Mensaje de error amigable al usuario
+            await sendTelegramMessage(chatId, 
+                `⚠️ <b>Servicio temporalmente no disponible</b>\n\n` +
+                `Lo siento, hay un problema de conectividad con el sistema de IA. ` +
+                `Por favor, inténtalo de nuevo en unos momentos.\n\n` +
+                `<i>Tu mensaje: "${userMessage}"</i>`
+            );
         }
         
     } catch (error) {
@@ -220,8 +208,8 @@ app.post('/test-retell', async (req, res) => {
     try {
         const { message = 'Test message', userId = '12345' } = req.body;
         
-        console.log('🧪 Testing Retell connection...');
-        const result = await createRetellChat(message, userId);
+        console.log('🧪 Testing Retell chat connection...');
+        const result = await sendMessageToRetellChat(message, userId);
         
         res.json({
             success: true,
