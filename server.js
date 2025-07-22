@@ -25,38 +25,8 @@ console.log('🚀 Iniciando servidor con configuración:');
 console.log('📱 Agent ID:', RETELL_AGENT_ID);
 console.log('🔑 API Key configurada:', RETELL_API_KEY ? 'Sí' : 'No');
 
-// Store para sesiones de chat activas
-const activeChatSessions = new Map();
-
-// Función para crear una sesión de chat en Retell
-async function createChatSession(userId) {
-    try {
-        console.log(`🔄 Creando sesión de chat para usuario ${userId}...`);
-        
-        const response = await axios.post(
-            'https://api.retellai.com/create-chat',
-            {
-                agent_id: RETELL_AGENT_ID,
-                metadata: {
-                    telegram_user_id: userId.toString(),
-                    created_at: new Date().toISOString()
-                }
-            },
-            {
-                headers: {
-                    'Authorization': `Bearer ${RETELL_API_KEY}`,
-                    'Content-Type': 'application/json'
-                }
-            }
-        );
-
-        console.log('✅ Sesión de chat creada:', response.data.chat_id);
-        return response.data;
-    } catch (error) {
-        console.error('❌ Error creando sesión de chat:', error.response?.data || error.message);
-        throw error;
-    }
-}
+// Store para información de usuarios (para tracking)
+const userSessions = new Map();
 
 // Función para simular conversación con Retell (como es de voz, adaptamos para texto)
 async function processMessageWithRetell(message) {
@@ -80,13 +50,13 @@ async function processMessageWithRetell(message) {
     }
 }
 
-// Función para obtener respuesta del chat
-async function getChatResponse(chatId) {
+// Función para verificar si el agente de Retell está activo
+async function verifyRetellAgent() {
     try {
-        console.log(`📥 Obteniendo respuesta del chat ${chatId}...`);
+        console.log(`🔍 Verificando agente ${RETELL_AGENT_ID}...`);
         
         const response = await axios.get(
-            `https://api.retellai.com/v2/get-chat/${chatId}`,
+            `https://api.retellai.com/get-agent/${RETELL_AGENT_ID}`,
             {
                 headers: {
                     'Authorization': `Bearer ${RETELL_API_KEY}`
@@ -94,10 +64,10 @@ async function getChatResponse(chatId) {
             }
         );
 
-        console.log('✅ Respuesta obtenida de Retell');
+        console.log('✅ Agente verificado en Retell');
         return response.data;
     } catch (error) {
-        console.error('❌ Error obteniendo respuesta:', error.response?.data || error.message);
+        console.error('❌ Error verificando agente:', error.response?.data || error.message);
         throw error;
     }
 }
@@ -148,60 +118,34 @@ app.post('/webhook', async (req, res) => {
         
         console.log(`👤 Usuario ${userId} en chat ${chatId}: "${userMessage}"`);
 
-        // Verificar si ya existe una sesión activa para este usuario
-        let chatSession = activeChatSessions.get(userId);
-        
-        if (!chatSession) {
-            console.log(`🆕 Creando nueva sesión para usuario ${userId}`);
-            try {
-                chatSession = await createChatSession(userId);
-                activeChatSessions.set(userId, chatSession);
-            } catch (error) {
-                console.error('❌ Error creando sesión:', error);
-                await sendTelegramMessage(chatId, 
-                    `🚨 <b>Error de configuración</b>\n\n` +
-                    `⚠️ No se pudo crear la sesión de chat.\n` +
-                    `🔑 API Key: ${RETELL_API_KEY ? 'Configurada' : 'Faltante'}\n` +
-                    `🤖 Agent ID: ${RETELL_AGENT_ID}\n\n` +
-                    `Por favor, verifica la configuración en el dashboard de Retell.`
-                );
-                return res.status(200).send('OK');
-            }
-        }
+        // Guardar información del usuario
+        userSessions.set(userId, {
+            telegram_chat_id: chatId,
+            last_message: userMessage,
+            timestamp: new Date().toISOString()
+        });
 
         try {
-            // Enviar mensaje a Retell
-            await sendMessageToRetell(chatSession.chat_id, userMessage);
+            // Verificar conexión con Retell primero
+            const agentInfo = await verifyRetellAgent();
             
-            // Esperar un poco para que Retell procese
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            // Procesar mensaje
+            const result = await processMessageWithRetell(userMessage);
             
-            // Obtener la respuesta
-            const chatData = await getChatResponse(chatSession.chat_id);
-            
-            // Extraer la última respuesta del agente del transcript
-            let agentResponse = "🤖 Procesando respuesta...";
-            
-            if (chatData.transcript) {
-                const lines = chatData.transcript.split('\n');
-                const agentLines = lines.filter(line => line.startsWith('Agent:'));
-                if (agentLines.length > 0) {
-                    agentResponse = agentLines[agentLines.length - 1].replace('Agent: ', '');
-                }
-            }
-            
-            console.log(`🤖 Respuesta del agente: "${agentResponse}"`);
+            console.log(`🤖 Respuesta procesada exitosamente`);
             
             // Enviar respuesta a Telegram
-            await sendTelegramMessage(chatId, agentResponse);
+            await sendTelegramMessage(chatId, result.response);
             
         } catch (error) {
-            console.error('❌ Error en el flujo de chat:', error);
+            console.error('❌ Error procesando mensaje:', error);
             await sendTelegramMessage(chatId, 
-                `🚨 <b>Error de comunicación</b>\n\n` +
-                `⚠️ No se pudo procesar tu mensaje.\n` +
-                `🔄 Intenta de nuevo en unos segundos.\n\n` +
-                `<i>Error: ${error.message}</i>`
+                `🚨 <b>Error de configuración</b>\n\n` +
+                `⚠️ Problema conectando con Retell AI.\n` +
+                `🔑 API Key: ${RETELL_API_KEY ? 'Configurada' : 'Faltante'}\n` +
+                `🤖 Agent ID: ${RETELL_AGENT_ID}\n\n` +
+                `<i>Error: ${error.message}</i>\n\n` +
+                `💡 Nota: Retell AI está diseñado principalmente para agentes de VOZ (llamadas telefónicas).`
             );
         }
 
@@ -214,9 +158,9 @@ app.post('/webhook', async (req, res) => {
 
 // Endpoint para limpiar sesiones (opcional, para debugging)
 app.post('/clear-sessions', (req, res) => {
-    const count = activeChatSessions.size;
-    activeChatSessions.clear();
-    console.log(`🧹 ${count} sesiones limpiadas`);
+    const count = userSessions.size;
+    userSessions.clear();
+    console.log(`🧹 ${count} sesiones de usuario limpiadas`);
     res.json({ message: `${count} sesiones limpiadas` });
 });
 
