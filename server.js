@@ -112,15 +112,41 @@ app.post('/webhook', async (req, res) => {
 
     res.status(200).send('Mensaje procesado correctamente.');
 
+ // ... (tu código anterior) ...
+
   } catch (error) {
     console.error(`[Usuario ${telegramUserId}] Error al procesar mensaje:`, error.response ? error.response.data : error.message);
 
     // Si Retell indica que la sesión ha terminado o es inválida (ej. 400 Bad Request),
     // borramos el chat_id localmente para forzar una nueva sesión en la próxima interacción.
-    if (error.response && error.response.status === 400 && error.response.data.message && error.response.data.message.includes('chat_id is not found or has ended')) {
-        console.log(`[Usuario ${telegramUserId}] Sesión Retell terminada o inválida. Borrando chat_id almacenado.`);
-        delete userSessions[telegramUserId];
+    if (error.response && error.response.status) {
+        if (error.response.status === 404) {
+            console.log(`[Usuario ${telegramUserId}] Recibido 404 Not Found de Retell. Borrando chat_id almacenado para forzar nueva sesión.`);
+            delete userSessions[telegramUserId];
+        } else if (error.response.status === 400 && error.response.data.message && error.response.data.message.includes('chat_id is not found or has ended')) {
+            console.log(`[Usuario ${telegramUserId}] Sesión Retell terminada o inválida (mensaje específico). Borrando chat_id almacenado.`);
+            delete userSessions[telegramUserId];
+        }
     }
+
+    // Envía un mensaje de error genérico al usuario de Telegram.
+    // Esto se envía al chat del usuario, NO es la respuesta al webhook.
+    await axios.post(
+      `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`,
+      {
+        chat_id: telegramChatId,
+        text: '¡Vaya! Hubo un problema al conectar con el asistente. Por favor, intenta de nuevo.',
+      }
+    );
+    
+    // --- ¡CAMBIO CRÍTICO AQUÍ! SIEMPRE RESPONDE 200 OK A TELEGRAM ---
+    // Incluso si hubo un error interno al hablar con Retell,
+    // le decimos a Telegram que hemos procesado su solicitud para que no la reenvíe.
+    res.status(200).send('Mensaje de Telegram procesado (con error interno).');
+  }
+});
+
+// ... (resto de tu código) ...
 
     // Envía un mensaje de error genérico al usuario de Telegram.
     await axios.post(
