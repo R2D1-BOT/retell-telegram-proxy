@@ -2,8 +2,7 @@ const express = require('express');
 const axios = require('axios');
 const bodyParser = require('body-parser'); // Para parsear el cuerpo de las peticiones JSON
 require('dotenv').config(); // <-- Esto carga las variables de tu archivo .env
-console.log('RETELL_AGENT_ID:', RETELL_AGENT_ID);
-console.log('RETELL_API_KEY:', RETELL_API_KEY);
+
 const app = express();
 app.use(bodyParser.json()); // Habilita Express para leer JSON en el cuerpo de las peticiones
 
@@ -13,7 +12,8 @@ app.use(bodyParser.json()); // Habilita Express para leer JSON en el cuerpo de l
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const RETELL_API_KEY = process.env.RETELL_API_KEY;
 const RETELL_AGENT_ID = process.env.RETELL_AGENT_ID;
-
+console.log('RETELL_AGENT_ID:', RETELL_AGENT_ID);
+console.log('RETELL_API_KEY:', RETELL_API_KEY);
 // Verifica si las variables se cargaron correctamente (útil para depuración)
 if (!TELEGRAM_BOT_TOKEN || !RETELL_API_KEY || !RETELL_AGENT_ID) {
     console.error("ERROR: ¡Faltan variables de entorno! Asegúrate de tener un archivo .env o configurarlas en tu entorno de despliegue.");
