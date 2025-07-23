@@ -25,7 +25,7 @@ if (!TELEGRAM_BOT_TOKEN || !RETELL_API_KEY || !RETELL_AGENT_ID) {
 const userSessions = {}; // Formato: { telegram_user_id: retell_chat_id }
 
 // --- Webhook de Telegram ---
-app.post('/webhook', async (req, res) => {
+app.post('/webhook', async (req, res) => { // <-- ¡IMPORTANTE! Aquí debe estar 'async'
   const { message } = req.body;
 
   // Validar que el mensaje de Telegram sea válido y contenga texto.
@@ -110,11 +110,10 @@ app.post('/webhook', async (req, res) => {
       );
     }
 
+    // Siempre responde 200 OK a Telegram para indicar que el mensaje fue recibido.
     res.status(200).send('Mensaje procesado correctamente.');
 
- // ... (tu código anterior) ...
-
-  } catch (error) {
+  } catch (error) { // <-- ESTE es el bloque catch correcto para tu try
     console.error(`[Usuario ${telegramUserId}] Error al procesar mensaje:`, error.response ? error.response.data : error.message);
 
     // Si Retell indica que la sesión ha terminado o es inválida (ej. 400 Bad Request),
@@ -130,7 +129,6 @@ app.post('/webhook', async (req, res) => {
     }
 
     // Envía un mensaje de error genérico al usuario de Telegram.
-    // Esto se envía al chat del usuario, NO es la respuesta al webhook.
     await axios.post(
       `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`,
       {
@@ -139,26 +137,10 @@ app.post('/webhook', async (req, res) => {
       }
     );
     
-    // --- ¡CAMBIO CRÍTICO AQUÍ! SIEMPRE RESPONDE 200 OK A TELEGRAM ---
-    // Incluso si hubo un error interno al hablar con Retell,
-    // le decimos a Telegram que hemos procesado su solicitud para que no la reenvíe.
+    // --- ¡CRÍTICO! SIEMPRE RESPONDE 200 OK A TELEGRAM, incluso con error interno. ---
     res.status(200).send('Mensaje de Telegram procesado (con error interno).');
-  }
-});
-
-// ... (resto de tu código) ...
-
-    // Envía un mensaje de error genérico al usuario de Telegram.
-    await axios.post(
-      `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`,
-      {
-        chat_id: telegramChatId,
-        text: '¡Vaya! Hubo un problema al conectar con el asistente. Por favor, intenta de nuevo.',
-      }
-    );
-    res.status(500).send('Error interno del servidor al procesar el mensaje.');
-  }
-});
+  } // <-- ¡Cierre correcto del try/catch!
+}); // <-- ¡Cierre correcto del app.post!
 
 // --- Iniciar el Servidor ---
 const PORT = process.env.PORT || 3000;
