@@ -2,7 +2,8 @@ const express = require('express');
 const axios = require('axios');
 const bodyParser = require('body-parser'); // Para parsear el cuerpo de las peticiones JSON
 require('dotenv').config(); // <-- Esto carga las variables de tu archivo .env
-
+console.log('RETELL_AGENT_ID:', RETELL_AGENT_ID);
+console.log('RETELL_API_KEY:', RETELL_API_KEY);
 const app = express();
 app.use(bodyParser.json()); // Habilita Express para leer JSON en el cuerpo de las peticiones
 
