@@ -12,11 +12,11 @@ const RETELL_API_KEY = process.env.RETELL_API_KEY;
 const RETELL_AGENT_ID = process.env.RETELL_AGENT_ID;
 
 if (!TELEGRAM_BOT_TOKEN || !RETELL_API_KEY || !RETELL_AGENT_ID) {
-    console.error("ERROR: ¡Faltan variables de entorno! Asegúrate de tener un archivo .env o configurarlas en tu entorno de despliegue.");
+    console.error("ERROR: ¡Faltan variables de entorno!");
     process.exit(1);
 }
 
-// --- Almacenamiento de Sesiones (¡SOLO PARA PRUEBAS/DESARROLLO LOCAL!) ---
+// --- Almacenamiento de Sesiones ---
 const userSessions = {};
 
 // --- Webhook de Telegram ---
@@ -24,7 +24,7 @@ app.post('/webhook', async (req, res) => {
   const { message } = req.body;
 
   if (!message || !message.text || !message.from || !message.from.id || !message.chat || !message.chat.id) {
-    console.warn('Mensaje de Telegram inválido o sin texto recibido. Ignorando.', req.body);
+    console.warn('Mensaje de Telegram inválido o sin texto recibido. Ignorando.');
     return res.status(200).send('Mensaje de Telegram inválido. Ignorado.');
   }
 
@@ -37,7 +37,7 @@ app.post('/webhook', async (req, res) => {
   try {
     // 1. Si NO tenemos un chat_id de Retell para este usuario, creamos uno nuevo.
     if (!retellChatId) {
-      console.log(`[Usuario ${telegramUserId}] No se encontró sesión Retell. Creando una nueva...`);
+      console.log(`[Usuario ${telegramUserId}] Creando nueva sesión Retell...`);
       const createChatResponse = await axios.post(
         'https://api.retellai.com/create-chat',
         {
@@ -53,12 +53,10 @@ app.post('/webhook', async (req, res) => {
 
       retellChatId = createChatResponse.data.chat_id;
       userSessions[telegramUserId] = retellChatId;
-      console.log(`[Usuario ${telegramUserId}] Nueva sesión Retell creada: ${retellChatId}`);
-    } else {
-      console.log(`[Usuario ${telegramUserId}] Usando sesión Retell existente: ${retellChatId}`);
+      console.log(`[Usuario ${telegramUserId}] Nueva sesión creada: ${retellChatId}`);
     }
 
-    // 2. Enviamos el mensaje del usuario a Retell AI usando el chat_id correcto.
+    // 2. Enviamos el mensaje del usuario a Retell AI
     const retellCompletionResponse = await axios.post(
       'https://api.retellai.com/create-chat-completion',
       {
@@ -82,9 +80,7 @@ app.post('/webhook', async (req, res) => {
     }
     botResponseText = botResponseText.trim();
 
-    console.log(`[Usuario ${telegramUserId}] Respuesta cruda de Retell: ${JSON.stringify(retellCompletionResponse.data)}`);
-
-    // 3. Enviamos la respuesta de Retell de vuelta al usuario de Telegram.
+    // 3. Enviamos la respuesta de vuelta al usuario
     if (botResponseText) {
       await axios.post(
         `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`,
@@ -93,59 +89,48 @@ app.post('/webhook', async (req, res) => {
           text: botResponseText,
         }
       );
+      console.log(`[Usuario ${telegramUserId}] Respuesta enviada exitosamente`);
     } else {
-      console.warn(`[Usuario ${telegramUserId}] Retell no devolvió contenido de respuesta válido.`);
       await axios.post(
         `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`,
         {
           chat_id: telegramChatId,
-          text: 'Disculpa, no pude generar una respuesta en este momento. Intenta de nuevo.',
+          text: 'Disculpa, no pude generar una respuesta. Intenta de nuevo.',
         }
       );
     }
 
-    // Siempre responde 200 OK a Telegram para indicar que el mensaje fue recibido.
     res.status(200).send('Mensaje procesado correctamente.');
 
   } catch (error) {
-    console.error(`[Usuario ${telegramUserId}] Error al procesar mensaje:`, error.response ? error.response.data : error.message);
+    console.error(`[Usuario ${telegramUserId}] Error:`, error.response ? error.response.data : error.message);
 
-    // Si Retell indica que la sesión ha terminado o es inválida (ej. 404 o 400 específico),
-    // borramos el chat_id localmente para forzar una nueva sesión en la próxima interacción.
-    if (error.response && error.response.status) {
-        if (error.response.status === 404) {
-            console.log(`[Usuario ${telegramUserId}] Recibido 404 Not Found de Retell. Borrando chat_id almacenado para forzar nueva sesión.`);
-            delete userSessions[telegramUserId];
-        } else if (error.response.status === 400 && error.response.data.message && error.response.data.message.includes('chat_id is not found or has ended')) {
-            console.log(`[Usuario ${telegramUserId}] Sesión Retell terminada o inválida (mensaje específico). Borrando chat_id almacenado.`);
-            delete userSessions[telegramUserId];
-        }
+    // Si la sesión es inválida, la borramos
+    if (error.response && (error.response.status === 404 || error.response.status === 400)) {
+      console.log(`[Usuario ${telegramUserId}] Sesión inválida, borrando...`);
+      delete userSessions[telegramUserId];
     }
 
-    // Envía un mensaje de error genérico al usuario de Telegram.
+    // Mensaje de error al usuario
     try {
       await axios.post(
         `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`,
         {
           chat_id: telegramChatId,
-          text: '¡Vaya! Hubo un problema al conectar con el asistente. Por favor, intenta de nuevo.',
+          text: 'Hubo un problema. Intenta de nuevo.',
         }
       );
     } catch (telegramError) {
-      console.error(`[Usuario ${telegramUserId}] Error enviando mensaje a Telegram:`, telegramError.message);
+      console.error(`Error enviando mensaje a Telegram:`, telegramError.message);
     }
 
-    // CRÍTICO: Siempre responde 200 OK a Telegram para evitar el spam de reintentos.
-    res.status(200).send('Mensaje de Telegram procesado (con error interno).');
+    // SIEMPRE responde 200 OK a Telegram
+    res.status(200).send('Mensaje procesado (con error).');
   }
 });
 
 // --- Iniciar el Servidor ---
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`Servidor escuchando en el puerto ${PORT}`);
-  console.log('--- Recordatorio para despliegue en Reiwah (o similar): ---');
-  console.log('1. Asegúrate de que el archivo .env NO esté en tu GitHub (.gitignore).');
-  console.log('2. Configura TELEGRAM_BOT_TOKEN, RETELL_API_KEY y RETELL_AGENT_ID como variables de entorno directamente en la plataforma de Reiwah.');
-  console.log('3. En Reiwah, tu webhook de Telegram apuntará a la URL de tu despliegue (ej. https://tucodigo.reiwah.com/webhook).');
+  console.log(`🚀 Bot funcionando en puerto ${PORT}`);
 });
