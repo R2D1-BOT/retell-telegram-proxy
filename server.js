@@ -16,7 +16,6 @@ if (!TELEGRAM_BOT_TOKEN || !RETELL_API_KEY || !RETELL_AGENT_ID) {
     process.exit(1);
 }
 
-// 30 segundos sin actividad = cierre
 const SESSION_TIMEOUT = 30 * 1000;
 const userSessions = new Map();
 
@@ -32,31 +31,23 @@ async function sendTelegram(chatId, text) {
     }
 }
 
-// Crear nueva sesión en Retell
+// Crear sesión Retell (sin /v1)
 async function createRetellChat() {
     const res = await axios.post(
-        'https://api.retellai.com/v1/create-chat',
+        'https://api.retellai.com/create-chat',
         { agent_id: RETELL_AGENT_ID },
         { headers: { Authorization: `Bearer ${RETELL_API_KEY}` } }
     );
-    return {
-        chatId: res.data.chat_id,
-        conversationId: res.data.conversation_id,
-    };
+    return res.data.chat_id;
 }
 
-// Enviar mensaje a Retell
-async function sendRetellMessage(chatId, conversationId, content) {
+// Enviar mensaje a Retell (también sin /v1)
+async function sendRetellMessage(chatId, content) {
     const res = await axios.post(
-        'https://api.retellai.com/v1/create-chat-completion',
-        {
-            chat_id: chatId,
-            conversation_id: conversationId,
-            content: content,
-        },
+        'https://api.retellai.com/create-chat-completion',
+        { chat_id: chatId, content },
         { headers: { Authorization: `Bearer ${RETELL_API_KEY}` } }
     );
-
     if (res.data.messages && res.data.messages.length > 0) {
         return res.data.messages[0].content || '[Respuesta vacía del agente]';
     }
@@ -70,7 +61,7 @@ function closeSession(userId, telegramChatId) {
     console.log(`🕒 Sesión cerrada automáticamente para usuario ${userId}`);
 }
 
-// Webhook de Telegram
+// Webhook Telegram
 app.post('/webhook', async (req, res) => {
     try {
         const msg = req.body?.message;
@@ -80,7 +71,7 @@ app.post('/webhook', async (req, res) => {
         const telegramChatId = msg.chat.id;
         const text = msg.text.trim();
 
-        // Comando de cierre manual
+        // Cierre manual
         if (text === '/end') {
             if (userSessions.has(userId)) {
                 clearTimeout(userSessions.get(userId).timeoutId);
@@ -92,11 +83,10 @@ app.post('/webhook', async (req, res) => {
 
         let session = userSessions.get(userId);
 
-        // Si no hay sesión activa, la creamos
         if (!session) {
             try {
-                const { chatId, conversationId } = await createRetellChat();
-                session = { chatId, conversationId, timeoutId: null };
+                const chatId = await createRetellChat();
+                session = { chatId, timeoutId: null };
                 userSessions.set(userId, session);
             } catch (err) {
                 console.error('❌ Error creando sesión Retell:', err.message);
@@ -107,16 +97,14 @@ app.post('/webhook', async (req, res) => {
             clearTimeout(session.timeoutId);
         }
 
-        // Enviamos mensaje a Retell
         try {
-            const reply = await sendRetellMessage(session.chatId, session.conversationId, text);
+            const reply = await sendRetellMessage(session.chatId, text);
             await sendTelegram(telegramChatId, reply || '[Respuesta vacía]');
         } catch (err) {
             console.error('❌ Error Retell:', err.message);
             await sendTelegram(telegramChatId, 'Error comunicando con el agente. Inténtalo más tarde.');
         }
 
-        // Reiniciar timeout
         session.timeoutId = setTimeout(() => {
             closeSession(userId, telegramChatId);
         }, SESSION_TIMEOUT);
@@ -136,4 +124,3 @@ app.get('/health', (req, res) => {
 app.listen(PORT, () => {
     console.log(`✅ Bot escuchando en puerto ${PORT}`);
 });
-
