@@ -1,35 +1,28 @@
 const express = require('express');
 const axios = require('axios');
-const bodyParser = require('body-parser'); // Para parsear el cuerpo de las peticiones JSON
-require('dotenv').config(); // <-- Esto carga las variables de tu archivo .env
+const bodyParser = require('body-parser');
+require('dotenv').config();
 
 const app = express();
-app.use(bodyParser.json()); // Habilita Express para leer JSON en el cuerpo de las peticiones
+app.use(bodyParser.json());
 
-// --- Configuración de Variables de Entorno (¡Método SEGURO!) ---
-// Estas variables se leerán desde tu archivo .env LOCALMENTE
-// Y desde la configuración de variables de entorno en Reiwah cuando despliegues.
+// --- Configuración de Variables de Entorno ---
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const RETELL_API_KEY = process.env.RETELL_API_KEY;
 const RETELL_AGENT_ID = process.env.RETELL_AGENT_ID;
-console.log('RETELL_AGENT_ID:', RETELL_AGENT_ID);
-console.log('RETELL_API_KEY:', RETELL_API_KEY);
-// Verifica si las variables se cargaron correctamente (útil para depuración)
+
 if (!TELEGRAM_BOT_TOKEN || !RETELL_API_KEY || !RETELL_AGENT_ID) {
     console.error("ERROR: ¡Faltan variables de entorno! Asegúrate de tener un archivo .env o configurarlas en tu entorno de despliegue.");
-    process.exit(1); // Sale del proceso si faltan variables críticas
+    process.exit(1);
 }
 
 // --- Almacenamiento de Sesiones (¡SOLO PARA PRUEBAS/DESARROLLO LOCAL!) ---
-// En PRODUCCIÓN con Reiwah, DEBES usar una base de datos o Redis
-// para persistir las sesiones entre reinicios del servidor o si Reiwah escala tu app.
-const userSessions = {}; // Formato: { telegram_user_id: retell_chat_id }
+const userSessions = {};
 
 // --- Webhook de Telegram ---
-app.post('/webhook', async (req, res) => { // <-- ¡IMPORTANTE! Aquí debe estar 'async'
+app.post('/webhook', async (req, res) => {
   const { message } = req.body;
 
-  // Validar que el mensaje de Telegram sea válido y contenga texto.
   if (!message || !message.text || !message.from || !message.from.id || !message.chat || !message.chat.id) {
     console.warn('Mensaje de Telegram inválido o sin texto recibido. Ignorando.', req.body);
     return res.status(200).send('Mensaje de Telegram inválido. Ignorado.');
@@ -114,10 +107,10 @@ app.post('/webhook', async (req, res) => { // <-- ¡IMPORTANTE! Aquí debe estar
     // Siempre responde 200 OK a Telegram para indicar que el mensaje fue recibido.
     res.status(200).send('Mensaje procesado correctamente.');
 
-  } catch (error) { // <-- ESTE es el bloque catch correcto para tu try
+  } catch (error) {
     console.error(`[Usuario ${telegramUserId}] Error al procesar mensaje:`, error.response ? error.response.data : error.message);
 
-    // Si Retell indica que la sesión ha terminado o es inválida (ej. 400 Bad Request),
+    // Si Retell indica que la sesión ha terminado o es inválida (ej. 404 o 400 específico),
     // borramos el chat_id localmente para forzar una nueva sesión en la próxima interacción.
     if (error.response && error.response.status) {
         if (error.response.status === 404) {
@@ -130,18 +123,22 @@ app.post('/webhook', async (req, res) => { // <-- ¡IMPORTANTE! Aquí debe estar
     }
 
     // Envía un mensaje de error genérico al usuario de Telegram.
-    await axios.post(
-      `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`,
-      {
-        chat_id: telegramChatId,
-        text: '¡Vaya! Hubo un problema al conectar con el asistente. Por favor, intenta de nuevo.',
-      }
-    );
-    
-    // --- ¡CRÍTICO! SIEMPRE RESPONDE 200 OK A TELEGRAM, incluso con error interno. ---
+    try {
+      await axios.post(
+        `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`,
+        {
+          chat_id: telegramChatId,
+          text: '¡Vaya! Hubo un problema al conectar con el asistente. Por favor, intenta de nuevo.',
+        }
+      );
+    } catch (telegramError) {
+      console.error(`[Usuario ${telegramUserId}] Error enviando mensaje a Telegram:`, telegramError.message);
+    }
+
+    // CRÍTICO: Siempre responde 200 OK a Telegram para evitar el spam de reintentos.
     res.status(200).send('Mensaje de Telegram procesado (con error interno).');
-  } // <-- ¡Cierre correcto del try/catch!
-}); // <-- ¡Cierre correcto del app.post!
+  }
+});
 
 // --- Iniciar el Servidor ---
 const PORT = process.env.PORT || 3000;
