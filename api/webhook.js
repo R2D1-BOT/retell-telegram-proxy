@@ -1,5 +1,3 @@
-const fetch = require('node-fetch');
-
 module.exports = async function handler(req, res) {
   if (req.method === 'GET') {
     return res.json({ status: 'Bot + Retell Chat OK' });
