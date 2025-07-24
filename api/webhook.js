@@ -1,60 +1,53 @@
-module.exports = async function handler(req, res) {
+// /api/webhook.js
+
+export default async function handler(req, res) {
   if (req.method === 'GET') {
-    return res.json({ status: 'Bot + Retell Chat OK' });
+    return res.status(200).json({ status: '✅ Bot + Retell V3 Chat OK' });
   }
 
   if (req.method === 'POST') {
     try {
       const { message } = req.body;
-
-      if (!message || !message.text) {
-        return res.json({ ok: true });
-      }
+      if (!message || !message.text) return res.status(200).json({ ok: true });
 
       const chatId = message.chat.id;
       const userMessage = message.text;
+      console.log(`📨 Mensaje Telegram: ${userMessage}`);
 
-      console.log(`Mensaje recibido de Telegram: ${userMessage}`);
-
-      // Crear sesión de chat
-      const sessionResponse = await fetch('https://api.retellai.com/v2/create-chat', {
+      // Paso 1: crear sesión de chat
+      const startChat = await fetch('https://api.retellai.com/v3/response-engine/start-chat', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${process.env.RETELL_API_KEY}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          agent_id: process.env.RETELL_AGENT_ID,
-          session_id: `telegram_${chatId}`
+          agent_id: process.env.RETELL_AGENT_ID
         })
       });
 
-      const sessionData = await sessionResponse.json();
+      const startChatData = await startChat.json();
+      const chat_id = startChatData.chat_id;
+      if (!chat_id) throw new Error('No se pudo crear la sesión de chat con Retell');
 
-      if (!sessionData.chat_id) {
-        console.error('Error en create-chat:', sessionData);
-        throw new Error('Fallo al crear chat en Retell');
-      }
-
-      // Enviar mensaje del usuario
-      const completionResponse = await fetch('https://api.retellai.com/v2/create-chat-completion', {
+      // Paso 2: enviar mensaje del usuario
+      const sendMessage = await fetch('https://api.retellai.com/v3/response-engine/send-message', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${process.env.RETELL_API_KEY}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          chat_id: sessionData.chat_id,
+          chat_id,
           content: userMessage
         })
       });
 
-      const completionData = await completionResponse.json();
-      console.log('Respuesta de Retell:', completionData);
+      const responseData = await sendMessage.json();
+      const agentReply = responseData.messages?.[responseData.messages.length - 1]?.content || '🤖 No se pudo generar respuesta';
+      console.log('🤖 Respuesta Retell:', agentReply);
 
-      const agentReply = completionData?.messages?.[completionData.messages.length - 1]?.content || 'No hay respuesta del agente.';
-
-      // Enviar respuesta a Telegram
+      // Paso 3: responder a Telegram
       await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -64,13 +57,13 @@ module.exports = async function handler(req, res) {
         })
       });
 
-      return res.json({ ok: true });
+      return res.status(200).json({ ok: true });
 
-    } catch (error) {
-      console.error('ERROR CRÍTICO:', error);
-      return res.status(500).json({ error: error.message });
+    } catch (err) {
+      console.error('❌ Error:', err);
+      return res.status(500).json({ error: err.message });
     }
+  } else {
+    res.status(405).end();
   }
-
-  return res.status(405).json({ error: 'Método no permitido' });
-};
+}
