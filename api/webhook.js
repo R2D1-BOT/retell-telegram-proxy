@@ -16,14 +16,16 @@ export default async function handler(req, res) {
 
       console.log(`📨 Mensaje recibido: ${userMessage}`);
 
-      const retellResponse = await fetch('https://api.retellai.com/create-chat-completion', {
+      // 🔐 Petición a Retell AI CHAT (NO VOICE)
+      const retellResponse = await fetch('https://api.retellai.com/v3/response-engine', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${process.env.RETELL_API_KEY}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          chat_id: process.env.RETELL_AGENT_ID,
+          agent_id: process.env.RETELL_AGENT_ID,
+          chat_id: `telegram-${chatId}`,  // sesión única por usuario
           content: userMessage
         })
       });
@@ -31,22 +33,21 @@ export default async function handler(req, res) {
       const retellData = await retellResponse.json();
       console.log('📦 Retell response:', retellData);
 
-      const agentResponse = retellData.messages?.[retellData.messages.length - 1]?.content || 'Lo siento, no entendí.';
+      const agentResponse = retellData?.content || 'Lo siento, no entendí.';
 
       await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-       body: JSON.stringify({
-  chat_id: `telegram-${chatId}`,
-  agent_id: process.env.RETELL_AGENT_ID,
-  content: userMessage
-})
-
+        body: JSON.stringify({
+          chat_id: chatId,
+          text: agentResponse
+        })
+      });
 
       return res.json({ ok: true });
 
     } catch (error) {
-      console.error('❌ Error:', error);
+      console.error('❌ Error crítico:', error);
       return res.status(500).json({ error: error.message });
     }
   }
@@ -54,3 +55,4 @@ export default async function handler(req, res) {
   res.setHeader('Allow', ['GET', 'POST']);
   res.status(405).end(`Method ${req.method} Not Allowed`);
 }
+
