@@ -1,3 +1,4 @@
+const fetch = require('node-fetch');
 
 module.exports = async function handler(req, res) {
   if (req.method === 'GET') {
@@ -17,7 +18,7 @@ module.exports = async function handler(req, res) {
 
       console.log(`📨 Mensaje recibido: ${userMessage}`);
 
-      // 🔐 Petición a Retell AI CHAT (NO VOICE)
+      // 🔐 Llamada segura a Retell AI
       const retellResponse = await fetch('https://api.retellai.com/v3/response-engine', {
         method: 'POST',
         headers: {
@@ -26,16 +27,27 @@ module.exports = async function handler(req, res) {
         },
         body: JSON.stringify({
           agent_id: process.env.RETELL_AGENT_ID,
-          chat_id: `telegram-${chatId}`,  // sesión única por usuario
+          chat_id: `telegram-${chatId}`,
           content: userMessage
         })
       });
 
-      const retellData = await retellResponse.json();
+      // 🔍 Procesar respuesta: puede no ser JSON
+      const responseText = await retellResponse.text();
+
+      let retellData;
+      try {
+        retellData = JSON.parse(responseText);
+      } catch (err) {
+        console.error("❌ ERROR: Retell no devolvió JSON:", responseText);
+        throw new Error("Retell respondió con HTML o un error no JSON.");
+      }
+
       console.log('📦 Retell response:', retellData);
 
       const agentResponse = retellData?.content || 'Lo siento, no entendí.';
 
+      // Enviar mensaje a Telegram
       await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -55,5 +67,4 @@ module.exports = async function handler(req, res) {
 
   res.setHeader('Allow', ['GET', 'POST']);
   res.status(405).end(`Method ${req.method} Not Allowed`);
-}
-
+};
