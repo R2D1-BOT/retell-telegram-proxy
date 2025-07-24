@@ -26,6 +26,12 @@ export default async function handler(req, res) {
         })
       });
 
+      const startContentType = startChat.headers.get("content-type") || "";
+      if (!startContentType.includes("application/json")) {
+        const text = await startChat.text();
+        throw new Error(`❌ Respuesta no JSON de Retell (start-chat): ${text}`);
+      }
+
       const startChatData = await startChat.json();
       const chat_id = startChatData.chat_id;
       if (!chat_id) throw new Error('No se pudo crear la sesión de chat con Retell');
@@ -42,6 +48,12 @@ export default async function handler(req, res) {
           content: userMessage
         })
       });
+
+      const sendContentType = sendMessage.headers.get("content-type") || "";
+      if (!sendContentType.includes("application/json")) {
+        const text = await sendMessage.text();
+        throw new Error(`❌ Respuesta no JSON de Retell (send-message): ${text}`);
+      }
 
       const responseData = await sendMessage.json();
       const agentReply = responseData.messages?.[responseData.messages.length - 1]?.content || '🤖 No se pudo generar respuesta';
