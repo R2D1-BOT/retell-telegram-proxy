@@ -12,6 +12,14 @@ module.exports = async function handler(req, res) {
       const { message } = req.body;
       console.log('🔵 [POST] Petición POST de Telegram recibida. Cuerpo completo:', JSON.stringify(req.body, null, 2));
 
+      // **********************************************
+      // ** COMPROBACIÓN PARA EVITAR BUCLES (ya añadida) **
+      // **********************************************
+      if (message && message.from && message.from.is_bot) {
+        console.log('🤖 Mensaje recibido del propio bot, ignorando para evitar bucle.');
+        return res.json({ ok: true }); // Responde OK a Telegram para evitar reintentos
+      }
+
       if (!message || !message.text) {
         console.log('⚠️ Mensaje de Telegram sin texto o vacío, ignorando y respondiendo OK a Telegram.');
         return res.json({ ok: true });
@@ -21,8 +29,10 @@ module.exports = async function handler(req, res) {
       const userMessage = message.text;
       console.log(`📨 Mensaje recibido de Telegram (Chat ID: ${chatId}): "${userMessage}"`);
 
-      // URL CORRECTA para Retell AI Chat Completions
-      const retellApiUrl = 'https://api.retellai.com/v3/chat/completions';
+      // **********************************************
+      // ** LA URL DE RETELL AI AHORA ES ESTA **
+      // **********************************************
+      const retellApiUrl = 'https://api.retellai.com/v3/create-chat-completion'; // ¡¡¡URL CORREGIDA!!!
       const retellApiKey = process.env.RETELL_API_KEY;
       const retellAgentId = process.env.RETELL_AGENT_ID;
       const telegramBotToken = process.env.TELEGRAM_BOT_TOKEN;
@@ -30,7 +40,7 @@ module.exports = async function handler(req, res) {
       console.log(`📡 Preparando petición a Retell AI: ${retellApiUrl}`);
 
       const retellPayload = {
-        agent_id: retellAgentId, // Asegúrate de que este agent_id se usa
+        agent_id: retellAgentId,
         chat_id: `telegram-${chatId}`,
         content: userMessage
       };
