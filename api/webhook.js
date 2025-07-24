@@ -1,4 +1,6 @@
-export default async function handler(req, res) {
+const fetch = require('node-fetch');
+
+module.exports = async function handler(req, res) {
   if (req.method === 'GET') {
     return res.json({ status: 'Bot + Retell Chat OK' });
   }
@@ -14,10 +16,10 @@ export default async function handler(req, res) {
       const chatId = message.chat.id;
       const userMessage = message.text;
 
-      console.log(`📨 Mensaje: ${userMessage}`);
+      console.log(`📨 Mensaje de Telegram: ${userMessage}`);
 
-      // 1. Crear sesión de chat (siempre)
-      const createChat = await fetch('https://api.retellai.com/v2/create-chat', {
+      // Paso 1: Crear sesión de chat con Retell
+      const sessionResponse = await fetch('https://api.retellai.com/v2/create-chat', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${process.env.RETELL_API_KEY}`,
@@ -25,43 +27,55 @@ export default async function handler(req, res) {
         },
         body: JSON.stringify({
           agent_id: process.env.RETELL_AGENT_ID,
-          session_id: String(chatId)
+          session_id: `telegram_${chatId}`
         })
       });
 
-      const chatData = await createChat.json();
+      const sessionData = await sessionResponse.json();
 
-      if (!chatData.chat_id) {
-        throw new Error('Fallo en create-chat: ' + JSON.stringify(chatData));
+      if (!sessionData.chat_id) {
+        console.error('❌ Error en create-chat:', sessionData);
+        throw new Error('Retell create-chat falló');
       }
 
-      // 2. Generar respuesta
-      const chatCompletion = await fetch('https://api.retellai.com/v2/create-chat-completion', {
+      // Paso 2: Enviar mensaje del usuario
+      const completionResponse = await fetch('https://api.retellai.com/v2/create-chat-completion', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${process.env.RETELL_API_KEY}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          chat_id: chatData.chat_id,
-          user_input: userMessage
+          chat_id: sessionData.chat_id,
+          content: userMessage
         })
       });
 
-      const retellData = await chatCompletion.json();
-      console.log('📦 Retell response:', retellData);
+      const completionData = await completionResponse.json();
+      console.log('📦 Retell response:', completionData);
 
-      const agentResponse = retellData?.content || 'Sin respuesta del agente';
+      const agentReply = completionData?.messages?.[completionData.messages.length - 1]?.content || '🤖 No hay respuesta del agente.';
 
-      // 3. Responder a Telegram
+      // Paso 3: Responder a Telegram
       await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           chat_id: chatId,
-          text: agentResponse
+          text: agentReply
         })
       });
+
+      return res.json({ ok: true });
+
+    } catch (error) {
+      console.error('🔥 Error crítico:', error);
+      return res.status(500).json({ error: error.message });
+    }
+  }
+
+  return res.status(405).json({ error: 'Método no permitido' });
+};
 
       return res.json({ ok: true });
 
