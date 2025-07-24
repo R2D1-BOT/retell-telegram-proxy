@@ -1,10 +1,5 @@
 // /api/webhook.js
-
 export default async function handler(req, res) {
-  if (req.method === 'GET') {
-    return res.status(200).json({ status: '✅ Bot + Retell V3 Chat OK' });
-  }
-
   if (req.method === 'POST') {
     try {
       const { message } = req.body;
@@ -13,8 +8,8 @@ export default async function handler(req, res) {
       const chatId = message.chat.id;
       const userMessage = message.text;
 
-      // 🔁 Paso 1: crear sesión
-      const startSession = await fetch('https://api.retellai.com/v3/chat-session', {
+      // 1. Crear sesión de chat
+      const sessionRes = await fetch('https://api.retellai.com/v3/chat-session', {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${process.env.RETELL_API_KEY}`,
@@ -25,12 +20,12 @@ export default async function handler(req, res) {
         }),
       });
 
-      const sessionData = await startSession.json();
+      const sessionData = await sessionRes.json();
       const chat_id = sessionData.chat_id;
-      if (!chat_id) throw new Error('❌ No se pudo iniciar sesión de chat');
+      if (!chat_id) throw new Error('❌ Retell: no se pudo iniciar sesión de chat');
 
-      // 💬 Paso 2: enviar mensaje
-      const sendMessage = await fetch('https://api.retellai.com/v3/chat-completion', {
+      // 2. Enviar mensaje del usuario
+      const completionRes = await fetch('https://api.retellai.com/v3/chat-completion', {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${process.env.RETELL_API_KEY}`,
@@ -42,10 +37,10 @@ export default async function handler(req, res) {
         }),
       });
 
-      const response = await sendMessage.json();
-      const agentReply = response.messages?.at(-1)?.content || '🤖 Sin respuesta';
+      const completionData = await completionRes.json();
+      const agentReply = completionData.messages?.at(-1)?.content || '🤖 No hay respuesta del agente.';
 
-      // 📤 Paso 3: responder en Telegram
+      // 3. Responder a Telegram
       await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -58,10 +53,10 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true });
 
     } catch (err) {
-      console.error('❌ Error:', err);
+      console.error('❌ Error crítico:', err.message);
       return res.status(500).json({ error: err.message });
     }
-  } else {
-    res.status(405).end();
   }
+
+  return res.status(405).end();
 }
