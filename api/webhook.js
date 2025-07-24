@@ -16,9 +16,9 @@ module.exports = async function handler(req, res) {
       const chatId = message.chat.id;
       const userMessage = message.text;
 
-      console.log(`📨 Mensaje de Telegram: ${userMessage}`);
+      console.log(`📨 Mensaje recibido de Telegram: ${userMessage}`);
 
-      // Paso 1: Crear sesión de chat con Retell
+      // Paso 1: Crear sesión en Retell AI
       const sessionResponse = await fetch('https://api.retellai.com/v2/create-chat', {
         method: 'POST',
         headers: {
@@ -34,11 +34,11 @@ module.exports = async function handler(req, res) {
       const sessionData = await sessionResponse.json();
 
       if (!sessionData.chat_id) {
-        console.error('❌ Error en create-chat:', sessionData);
-        throw new Error('Retell create-chat falló');
+        console.error('❌ Fallo al crear sesión en Retell:', sessionData);
+        throw new Error('Error en create-chat');
       }
 
-      // Paso 2: Enviar mensaje del usuario
+      // Paso 2: Generar respuesta
       const completionResponse = await fetch('https://api.retellai.com/v2/create-chat-completion', {
         method: 'POST',
         headers: {
@@ -52,11 +52,11 @@ module.exports = async function handler(req, res) {
       });
 
       const completionData = await completionResponse.json();
-      console.log('📦 Retell response:', completionData);
+      console.log('📦 Respuesta de Retell:', completionData);
 
       const agentReply = completionData?.messages?.[completionData.messages.length - 1]?.content || '🤖 No hay respuesta del agente.';
 
-      // Paso 3: Responder a Telegram
+      // Paso 3: Enviar respuesta a Telegram
       await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -69,7 +69,7 @@ module.exports = async function handler(req, res) {
       return res.json({ ok: true });
 
     } catch (error) {
-      console.error('🔥 Error crítico:', error);
+      console.error('🔥 ERROR CRÍTICO:', error);
       return res.status(500).json({ error: error.message });
     }
   }
@@ -77,8 +77,3 @@ module.exports = async function handler(req, res) {
   return res.status(405).json({ error: 'Método no permitido' });
 };
 
-      return res.json({ ok: true });
-
-    } catch (error) {
-      console.error('❌ Error:', error);
-      return res.status(500).json({ error:
