@@ -32,7 +32,7 @@ module.exports = async function handler(req, res) {
       // **********************************************
       // ** LA URL DE RETELL AI AHORA ES ESTA **
       // **********************************************
-      const retellApiUrl = 'https://api.retellai.com/v3/create-chat-completion'; // ¡¡¡URL CORREGIDA!!!
+      const retellApiUrl = 'https://api.retellai.com/v3/chat-completions'; // ¡¡¡NUEVA, NUEVA URL A PROBAR!!! // ¡¡¡URL CORREGIDA!!!
       const retellApiKey = process.env.RETELL_API_KEY;
       const retellAgentId = process.env.RETELL_AGENT_ID;
       const telegramBotToken = process.env.TELEGRAM_BOT_TOKEN;
