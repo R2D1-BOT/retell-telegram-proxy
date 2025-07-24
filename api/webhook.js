@@ -1,8 +1,6 @@
-// 📁 /api/webhook.js
 const fetch = require('node-fetch');
 
 module.exports = async function handler(req, res) {
-  // Verificación de salud del endpoint
   if (req.method === 'GET') {
     return res.json({ 
       status: 'Bot + Retell Chat OK',
@@ -14,26 +12,21 @@ module.exports = async function handler(req, res) {
   if (req.method === 'POST') {
     try {
       const { message } = req.body;
-      
-      // Validar que existe el mensaje y tiene texto
       if (!message || !message.text) {
-        console.log('📭 Mensaje sin texto recibido, ignorando...');
+        console.log('Mensaje recibido sin texto, ignorado.');
         return res.json({ ok: true });
       }
 
       const chatId = message.chat.id;
       const userMessage = message.text;
       const userName = message.from?.first_name || 'Usuario';
-      
-      console.log(`📨 [${userName}] Mensaje recibido: "${userMessage}"`);
+      console.log(`[${userName}] Mensaje recibido: "${userMessage}"`);
 
-      // Validar variables de entorno
       if (!process.env.RETELL_API_KEY || !process.env.RETELL_AGENT_ID) {
         throw new Error('Faltan variables de entorno: RETELL_API_KEY o RETELL_AGENT_ID');
       }
 
-      // Llamada a Retell AI
-      const retellResponse = await fetch('https://api.retellai.com/v3/response-engine', {
+      const retellResponse = await fetch('https://api.retellai.com/v2/create-chat-completion', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${process.env.RETELL_API_KEY}`,
@@ -46,11 +39,20 @@ module.exports = async function handler(req, res) {
         })
       });
 
-      // Verificar si la respuesta es exitosa
       if (!retellResponse.ok) {
         const errorText = await retellResponse.text();
-        console.error(`❌ Error HTTP ${retellResponse.status}:`, errorText);
-        throw new Error(`Retell API error: ${retellResponse.status} - ${errorText}`);
+        console.error(`Error HTTP ${retellResponse.status}: ${errorText}`);
+
+        await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: chatId,
+            text: `Error del agente (${retellResponse.status}). Verifica tu configuración de Retell AI.`
+          })
+        });
+
+        throw new Error(`Retell API error: ${retellResponse.status}`);
       }
 
       const responseText = await retellResponse.text();
@@ -58,40 +60,48 @@ module.exports = async function handler(req, res) {
 
       try {
         retellData = JSON.parse(responseText);
+        console.log('Respuesta válida de Retell:', retellData);
       } catch (err) {
-        console.error("❌ Respuesta no JSON desde Retell:", responseText.substring(0, 200));
-        throw new Error("Retell devolvió contenido inválido. Revisa token o agent_id.");
+        console.error("Respuesta no JSON desde Retell:", responseText.substring(0, 500));
+        console.error("Posibles causas: API Key o Agent ID incorrectos");
+
+        await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: chatId,
+            text: 'Error de configuración. Verifica tu API Key y Agent ID de Retell AI.'
+          })
+        });
+
+        throw new Error("Respuesta inválida de Retell.");
       }
 
-      // Extraer respuesta del agente
-      const agentResponse = retellData?.content || retellData?.message || 'Lo siento, no pude procesar tu mensaje.';
-      
-      console.log(`🤖 Respuesta generada: "${agentResponse.substring(0, 100)}${agentResponse.length > 100 ? '...' : ''}"`);
+      const agentResponse = retellData?.content || retellData?.message || 'No se pudo generar respuesta.';
+      console.log(`Respuesta generada: "${agentResponse.substring(0, 100)}${agentResponse.length > 100 ? '...' : ''}"`);
 
-      // Enviar respuesta a Telegram
       const telegramResponse = await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           chat_id: chatId,
           text: agentResponse,
-          parse_mode: 'Markdown' // Opcional: permite formato básico
+          parse_mode: 'Markdown'
         })
       });
 
       if (!telegramResponse.ok) {
         const telegramError = await telegramResponse.text();
-        console.error('❌ Error enviando a Telegram:', telegramError);
-        throw new Error(`Error enviando mensaje a Telegram: ${telegramResponse.status}`);
+        console.error('Error enviando a Telegram:', telegramError);
+        throw new Error(`Telegram error: ${telegramResponse.status}`);
       }
 
-      console.log('✅ Mensaje enviado exitosamente');
+      console.log('Mensaje enviado exitosamente');
       return res.json({ ok: true });
 
     } catch (error) {
-      console.error('❌ Error crítico:', error.message);
-      
-      // Intentar enviar mensaje de error al usuario
+      console.error('Error crítico:', error.message);
+
       try {
         const { message } = req.body;
         if (message?.chat?.id) {
@@ -100,12 +110,12 @@ module.exports = async function handler(req, res) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               chat_id: message.chat.id,
-              text: '⚠️ Temporalmente no puedo responder. Por favor, inténtalo más tarde.'
+              text: 'Temporalmente no puedo responder. Intenta más tarde.'
             })
           });
         }
       } catch (fallbackError) {
-        console.error('❌ Error enviando mensaje de fallback:', fallbackError.message);
+        console.error('Error en mensaje de fallback:', fallbackError.message);
       }
 
       return res.status(500).json({ 
@@ -115,123 +125,7 @@ module.exports = async function handler(req, res) {
     }
   }
 
-  // Método no permitido
   res.setHeader('Allow', ['GET', 'POST']);
   res.status(405).end(`Method ${req.method} Not Allowed`);
 };
 
-// 📁 /package.json
-{
-  "name": "telegram-retell-bot",
-  "version": "1.0.0",
-  "description": "Bot de Telegram conectado a Retell AI",
-  "main": "api/webhook.js",
-  "scripts": {
-    "dev": "vercel dev",
-    "deploy": "vercel --prod"
-  },
-  "dependencies": {
-    "node-fetch": "^2.6.7"
-  },
-  "engines": {
-    "node": ">=14.x"
-  }
-}
-
-// 📁 /vercel.json
-{
-  "version": 2,
-  "builds": [
-    {
-      "src": "api/webhook.js",
-      "use": "@vercel/node"
-    }
-  ],
-  "routes": [
-    {
-      "src": "/api/webhook",
-      "dest": "/api/webhook.js"
-    }
-  ],
-  "env": {
-    "RETELL_API_KEY": "@retell_api_key",
-    "RETELL_AGENT_ID": "@retell_agent_id", 
-    "TELEGRAM_BOT_TOKEN": "@telegram_bot_token"
-  }
-}
-
-// 📁 /.env.example
-RETELL_API_KEY=sk-xxx
-RETELL_AGENT_ID=agent_8bb084b488139c5d3898c2878d
-TELEGRAM_BOT_TOKEN=8115124802:AAGd_EED9DQHFVYDYagf1CRPs6PKS_xpwJ0
-
-// 📁 /README.md
-# 🤖 Bot Telegram + Retell AI
-
-Bot de Telegram que utiliza agentes de chat de Retell AI para responder mensajes automáticamente.
-
-## 🚀 Despliegue Rápido
-
-### 1. Clona y configura
-```bash
-git clone [tu-repo]
-cd telegram-retell-bot
-```
-
-### 2. Configura variables de entorno en Vercel
-```bash
-vercel env add RETELL_API_KEY
-vercel env add RETELL_AGENT_ID  
-vercel env add TELEGRAM_BOT_TOKEN
-```
-
-### 3. Despliega
-```bash
-vercel --prod
-```
-
-### 4. Configura webhook de Telegram
-```bash
-curl -F "url=https://TU_DOMINIO.vercel.app/api/webhook" \
-  https://api.telegram.org/botTU_TOKEN/setWebhook
-```
-
-## 🔧 Variables de Entorno
-
-| Variable | Descripción | Ejemplo |
-|----------|-------------|---------|
-| `RETELL_API_KEY` | API Key de Retell AI | `sk-xxx` |
-| `RETELL_AGENT_ID` | ID del agente de chat | `agent_8bb084b488139c5d3898c2878d` |
-| `TELEGRAM_BOT_TOKEN` | Token del bot de Telegram | `123456:ABC-DEF` |
-
-## 📊 Logs y Monitoreo
-
-- Verifica el funcionamiento: `https://tu-dominio.vercel.app/api/webhook`
-- Los logs están disponibles en el dashboard de Vercel
-- Cada mensaje muestra: usuario, mensaje recibido y respuesta generada
-
-## 🆘 Troubleshooting
-
-### Error: "Retell devolvió HTML"
-- ✅ Verifica que el `RETELL_API_KEY` sea correcto
-- ✅ Confirma que el `RETELL_AGENT_ID` existe y es de tipo chat
-
-### Error: "Method not allowed" 
-- ✅ Asegúrate de que el webhook esté configurado correctamente
-- ✅ El endpoint debe recibir POST requests de Telegram
-
-### Bot no responde
-- ✅ Verifica que el webhook esté activo con `/getWebhookInfo`
-- ✅ Revisa los logs en Vercel para errores específicos
-
-## 🎯 Características
-
-- ✅ Manejo de errores robusto
-- ✅ Logs detallados para debugging  
-- ✅ Soporte para formato Markdown en respuestas
-- ✅ Mensajes de fallback en caso de error
-- ✅ Contexto preservado por chat_id único
-
----
-
-⚡ **¡Listo para usar!** Una vez desplegado, tu bot responderá automáticamente usando tu agente de Retell AI.
