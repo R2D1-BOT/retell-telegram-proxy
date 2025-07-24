@@ -1,6 +1,6 @@
 export default async function handler(req, res) {
   if (req.method === 'GET') {
-    return res.json({ status: 'Bot + Retell OK' });
+    return res.json({ status: 'Bot + Retell Chat OK' });
   }
   
   if (req.method === 'POST') {
@@ -15,31 +15,25 @@ export default async function handler(req, res) {
       const userMessage = message.text;
       
       console.log(`📨 Mensaje: ${userMessage}`);
-      console.log(`🔑 API Key exists: ${!!process.env.RETELL_API_KEY}`);
-      console.log(`🤖 Agent ID exists: ${!!process.env.RETELL_AGENT_ID}`);
 
-      // Llamada a Retell AI
-      console.log('🚀 Llamando a Retell...');
-      const retellResponse = await fetch('https://api.retellai.com/v2/create-phone-call', {
+      // Llamada a Retell AI Chat
+      const retellResponse = await fetch('https://api.retellai.com/create-chat-completion', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${process.env.RETELL_API_KEY}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          from_number: "+1234567890",
-          to_number: "+0987654321", 
-          agent_id: process.env.RETELL_AGENT_ID,
-          metadata: {
-            telegram_chat_id: chatId,
-            user_message: userMessage
-          }
+          chat_id: process.env.RETELL_AGENT_ID,
+          content: userMessage
         })
       });
 
-      console.log(`📊 Retell status: ${retellResponse.status}`);
       const retellData = await retellResponse.json();
       console.log('📦 Retell response:', retellData);
+      
+      // Obtener respuesta del agente
+      const agentResponse = retellData.messages?.[retellData.messages.length - 1]?.content || 'Error en respuesta';
       
       // Responder a Telegram
       await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
@@ -47,14 +41,14 @@ export default async function handler(req, res) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           chat_id: chatId,
-          text: `🤖 Procesado con Retell: "${userMessage}" - ID: ${retellData.call_id || 'error'}`
+          text: agentResponse
         })
       });
 
       return res.json({ ok: true });
 
     } catch (error) {
-      console.error('❌ Error completo:', error);
+      console.error('❌ Error:', error);
       return res.status(500).json({ error: error.message });
     }
   }
