@@ -63,7 +63,6 @@ module.exports = async function handler(req, res) {
         console.log('Respuesta válida de Retell:', retellData);
       } catch (err) {
         console.error("Respuesta no JSON desde Retell:", responseText.substring(0, 500));
-        console.error("Posibles causas: API Key o Agent ID incorrectos");
 
         await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
           method: 'POST',
@@ -128,4 +127,3 @@ module.exports = async function handler(req, res) {
   res.setHeader('Allow', ['GET', 'POST']);
   res.status(405).end(`Method ${req.method} Not Allowed`);
 };
-
