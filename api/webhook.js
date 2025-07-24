@@ -16,7 +16,7 @@ module.exports = async function handler(req, res) {
       const chatId = message.chat.id;
       const userMessage = message.text;
 
-      console.log(`📨 Mensaje recibido de Telegram: ${userMessage}`);
+      console.log(`Mensaje recibido de Telegram: ${userMessage}`);
 
       // Crear sesión de chat
       const sessionResponse = await fetch('https://api.retellai.com/v2/create-chat', {
@@ -34,7 +34,7 @@ module.exports = async function handler(req, res) {
       const sessionData = await sessionResponse.json();
 
       if (!sessionData.chat_id) {
-        console.error('❌ Error en create-chat:', sessionData);
+        console.error('Error en create-chat:', sessionData);
         throw new Error('Fallo al crear chat en Retell');
       }
 
@@ -52,9 +52,9 @@ module.exports = async function handler(req, res) {
       });
 
       const completionData = await completionResponse.json();
-      console.log('📦 Respuesta de Retell:', completionData);
+      console.log('Respuesta de Retell:', completionData);
 
-      const agentReply = completionData?.messages?.[completionData.messages.length - 1]?.content || '🤖 No hay respuesta del agente.';
+      const agentReply = completionData?.messages?.[completionData.messages.length - 1]?.content || 'No hay respuesta del agente.';
 
       // Enviar respuesta a Telegram
       await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
@@ -69,11 +69,10 @@ module.exports = async function handler(req, res) {
       return res.json({ ok: true });
 
     } catch (error) {
-      console.error('🔥 ERROR CRÍTICO:', error);
+      console.error('ERROR CRÍTICO:', error);
       return res.status(500).json({ error: error.message });
     }
   }
 
   return res.status(405).json({ error: 'Método no permitido' });
 };
-
