@@ -1,58 +1,55 @@
-// /api/webhook.js
-
 export default async function handler(req, res) {
   if (req.method === 'GET') {
-    return res.status(200).json({ status: '✅ Bot + Retell V3 Chat OK' });
+    return res.json({ status: 'Bot + Retell Chat OK' });
   }
 
   if (req.method === 'POST') {
     try {
       const { message } = req.body;
-      if (!message?.text) return res.status(200).json({ ok: true });
+
+      if (!message || !message.text) {
+        return res.json({ ok: true });
+      }
 
       const chatId = message.chat.id;
       const userMessage = message.text;
 
-      // 1. Crear nueva sesión de chat
-      const sessionRes = await fetch('https://api.retellai.com/v3/chat-session', {
+      console.log(`📨 Mensaje recibido: ${userMessage}`);
+
+      const retellResponse = await fetch('https://api.retellai.com/create-chat-completion', {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${process.env.RETELL_API_KEY}`,
-          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${process.env.RETELL_API_KEY}`,
+          'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ agent_id: process.env.RETELL_AGENT_ID }),
+        body: JSON.stringify({
+          chat_id: process.env.RETELL_AGENT_ID,
+          content: userMessage
+        })
       });
-      const sessionData = await sessionRes.json();
-      const chat_id = sessionData.chat_id;
-      if (!chat_id) throw new Error('❌ Falló iniciar sesión Retell');
 
-      // 2. Enviar mensaje al chat
-      const replyRes = await fetch('https://api.retellai.com/v3/chat-completion', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${process.env.RETELL_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ chat_id, message: userMessage }),
-      });
-      const replyData = await replyRes.json();
-      const agentReply = replyData.messages?.slice(-1)[0]?.content || '🤖 Sin respuesta';
+      const retellData = await retellResponse.json();
+      console.log('📦 Retell response:', retellData);
 
-      // 3. Devolver respuesta a Telegram
+      const agentResponse = retellData.messages?.[retellData.messages.length - 1]?.content || 'Lo siento, no entendí.';
+
       await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chat_id: chatId, text: agentReply }),
+        body: JSON.stringify({
+          chat_id: chatId,
+          text: agentResponse
+        })
       });
 
-      return res.status(200).json({ ok: true });
+      return res.json({ ok: true });
 
-    } catch (err) {
-      console.error('❌ Error crítico:', err.message);
-      return res.status(500).json({ error: err.message });
+    } catch (error) {
+      console.error('❌ Error:', error);
+      return res.status(500).json({ error: error.message });
     }
   }
 
-  res.status(405).end();
+  res.setHeader('Allow', ['GET', 'POST']);
+  res.status(405).end(`Method ${req.method} Not Allowed`);
 }
-
