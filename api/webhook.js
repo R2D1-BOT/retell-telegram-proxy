@@ -15,8 +15,11 @@ export default async function handler(req, res) {
       const userMessage = message.text;
       
       console.log(`📨 Mensaje: ${userMessage}`);
+      console.log(`🔑 API Key exists: ${!!process.env.RETELL_API_KEY}`);
+      console.log(`🤖 Agent ID exists: ${!!process.env.RETELL_AGENT_ID}`);
 
       // Llamada a Retell AI
+      console.log('🚀 Llamando a Retell...');
       const retellResponse = await fetch('https://api.retellai.com/v2/create-phone-call', {
         method: 'POST',
         headers: {
@@ -34,7 +37,9 @@ export default async function handler(req, res) {
         })
       });
 
+      console.log(`📊 Retell status: ${retellResponse.status}`);
       const retellData = await retellResponse.json();
+      console.log('📦 Retell response:', retellData);
       
       // Responder a Telegram
       await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
@@ -49,7 +54,7 @@ export default async function handler(req, res) {
       return res.json({ ok: true });
 
     } catch (error) {
-      console.error('Error:', error.message);
+      console.error('❌ Error completo:', error);
       return res.status(500).json({ error: error.message });
     }
   }
