@@ -36,11 +36,12 @@ export default async function handler(req, res) {
       await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          chat_id: chatId,
-          text: agentResponse
-        })
-      });
+       body: JSON.stringify({
+  chat_id: `telegram-${chatId}`,
+  agent_id: process.env.RETELL_AGENT_ID,
+  content: userMessage
+})
+
 
       return res.json({ ok: true });
 
